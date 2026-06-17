@@ -35,10 +35,14 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Reads the repo's Pages config. Pages must be enabled once in
-      # Settings -> Pages -> Source: "GitHub Actions" (the Actions token is not
-      # allowed to create the Pages site automatically on this repo).
+      # Enable + read the repo's Pages config. `enablement: true` auto-creates
+      # the Pages site, but ONLY if the repo's Actions token may write Pages
+      # (Settings -> Actions -> General -> Workflow permissions: Read and write).
+      # Alternatively, enable Pages once via Settings -> Pages -> Source: GitHub
+      # Actions, which also satisfies this step.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
