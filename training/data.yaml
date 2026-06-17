@@ -1,0 +1,22 @@
+# Xiangqi (Chinese chess) piece-type detector — Ultralytics dataset config.
+#
+# 7 classes by piece TYPE only. Piece COLOUR (red/black) is resolved at
+# inference time from pixel colour, not by the detector. This matches the
+# vietnamese-labelled vietanhdev/chessai-data dataset and keeps the number of
+# classes low, which improves accuracy with limited data.
+#
+# The `names` ORDER is the contract with the frontend: it MUST stay identical to
+# PIECE_TYPES in frontend/src/lib/constants.ts.
+
+path: ./datasets/xiangqi    # root produced by download_dataset.py
+train: images/train
+val: images/val
+
+names:
+  0: xe      # Chariot / Rook
+  1: ma      # Horse / Knight
+  2: tuong   # Elephant
+  3: si      # Advisor
+  4: vua     # General / King
+  5: phao    # Cannon
+  6: tot     # Soldier / Pawn

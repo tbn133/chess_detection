@@ -1,0 +1,12 @@
+# Training & export pipeline for the Xiangqi YOLO26n detector.
+ultralytics>=8.3.0      # YOLO26 training + ONNX export
+onnx>=1.16.0
+onnxslim>=0.1.34        # graph simplification on export
+onnxruntime>=1.20.0     # sanity-check the exported model
+huggingface_hub>=0.25.0 # download vietanhdev/chessai-data
+pillow>=10.0.0
+pyyaml>=6.0
+tqdm>=4.66.0
+
+# Optional: only needed for --source roboflow
+# roboflow>=1.1.0

@@ -1,0 +1,17 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Models (large binaries produced by training)
+frontend/public/models/*.onnx
+
+# Training
+training/.venv/
+training/datasets/
+training/runs/
+__pycache__/
+*.pt
+
+# OS
+.DS_Store
