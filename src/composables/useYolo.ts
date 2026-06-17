@@ -6,9 +6,11 @@ import { decodeYolo } from '../lib/yoloDecode'
 import { nms } from '../lib/nms'
 import type { Detection, ModelStatus } from '../lib/types'
 
-// Serve the WASM/threading binaries from a CDN so we don't have to copy them
-// into /public. Pinned to the installed onnxruntime-web version.
-const ORT_VERSION = '1.20.1'
+// Serve the WASM/threading binaries from a CDN. This MUST match the installed
+// onnxruntime-web version exactly — a mismatch makes the JS glue call WASM
+// exports that don't exist (e.g. "t.getValue is not a function"). Keep this in
+// sync with the pinned version in package.json.
+const ORT_VERSION = '1.26.0'
 ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`
 
 const DEFAULT_MODEL_URL = `${import.meta.env.BASE_URL}models/xiangqi-yolo26n.onnx`
