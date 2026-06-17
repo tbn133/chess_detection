@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy": "npm run build && gh-pages -d dist -t -b gh-pages -m \"Deploy built site\""
+    "deploy": "npm run build && gh-pages -d dist -t -f -b xiangqi-vision -m \"Deploy built site\""
   },
   "dependencies": {
     "onnxruntime-web": "^1.20.1",
