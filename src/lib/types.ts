@@ -17,6 +17,14 @@ export interface BoardCorners {
   bottomLeft: Point
 }
 
+/**
+ * A deformable grid of the 90 intersections in IMAGE pixel coordinates.
+ * mesh[rank][file] is the image position of intersection (file, rank).
+ * Size is RANKS (rows) x FILES (cols). Lets the user bend the grid to match a
+ * warped/folded board, beyond what a single 4-corner homography allows.
+ */
+export type BoardMesh = Point[][]
+
 /** A raw detection from the YOLO model, in original image pixel coordinates. */
 export interface Detection {
   x1: number

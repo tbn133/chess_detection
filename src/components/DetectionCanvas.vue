@@ -1,30 +1,17 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue'
 import { FILES, PIECE_TYPE_BY_ID, RANKS } from '../lib/constants'
-import { applyHomography, computeHomography } from '../lib/homography'
-import type { BoardCorners, PlacedPiece, Point } from '../lib/types'
+import type { BoardMesh, PlacedPiece } from '../lib/types'
 
 const props = defineProps<{
   image: HTMLImageElement
   naturalWidth: number
   naturalHeight: number
-  corners: BoardCorners
+  mesh: BoardMesh
   placed: PlacedPiece[]
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
-
-// Grid space -> image space (inverse of the mapping used for detection).
-function gridToImage(corners: BoardCorners) {
-  const gridCorners: Point[] = [
-    { x: 0, y: 0 },
-    { x: FILES - 1, y: 0 },
-    { x: FILES - 1, y: RANKS - 1 },
-    { x: 0, y: RANKS - 1 },
-  ]
-  const imgCorners = [corners.topLeft, corners.topRight, corners.bottomRight, corners.bottomLeft]
-  return computeHomography(gridCorners, imgCorners)
-}
 
 function draw() {
   const canvas = canvasRef.value
@@ -35,25 +22,21 @@ function draw() {
   ctx.drawImage(props.image, 0, 0)
 
   const line = Math.max(1.5, Math.max(props.naturalWidth, props.naturalHeight) / 500)
+  const m = props.mesh
 
-  // Faint grid for visual verification of the corner alignment.
-  const H = gridToImage(props.corners)
+  // Grid (from the deformable mesh) for visual verification of alignment.
   ctx.strokeStyle = 'rgba(56,189,248,0.55)'
   ctx.lineWidth = line
-  for (let f = 0; f < FILES; f++) {
-    ctx.beginPath()
-    const a = applyHomography(H, { x: f, y: 0 })
-    const b = applyHomography(H, { x: f, y: RANKS - 1 })
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
-    ctx.stroke()
-  }
   for (let r = 0; r < RANKS; r++) {
     ctx.beginPath()
-    const a = applyHomography(H, { x: 0, y: r })
-    const b = applyHomography(H, { x: FILES - 1, y: r })
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
+    ctx.moveTo(m[r][0].x, m[r][0].y)
+    for (let f = 1; f < FILES; f++) ctx.lineTo(m[r][f].x, m[r][f].y)
+    ctx.stroke()
+  }
+  for (let f = 0; f < FILES; f++) {
+    ctx.beginPath()
+    ctx.moveTo(m[0][f].x, m[0][f].y)
+    for (let r = 1; r < RANKS; r++) ctx.lineTo(m[r][f].x, m[r][f].y)
     ctx.stroke()
   }
 

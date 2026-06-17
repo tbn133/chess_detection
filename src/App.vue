@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import ImageUploader from './components/ImageUploader.vue'
-import BoardCornerEditor from './components/BoardCornerEditor.vue'
+import BoardGridEditor from './components/BoardGridEditor.vue'
 import DetectionCanvas from './components/DetectionCanvas.vue'
 import ResultPanel from './components/ResultPanel.vue'
 import { useYolo } from './composables/useYolo'
 import { classifyDetections } from './lib/extractColors'
-import { mapDetectionsToBoard, type MappingResult } from './lib/boardMapping'
+import { type MappingResult } from './lib/boardMapping'
+import { mapDetectionsToMesh, meshFromCorners } from './lib/boardMesh'
 import { boardToFen, flipBoard } from './lib/xiangqiFen'
-import type { Board, BoardCorners, PlacedPiece } from './lib/types'
+import type { Board, BoardCorners, BoardMesh, PlacedPiece } from './lib/types'
 
 const { status, error: modelError, backend, load, detect } = useYolo()
 
@@ -16,7 +17,8 @@ const imageUrl = ref<string | null>(null)
 const image = ref<HTMLImageElement | null>(null)
 const naturalWidth = ref(0)
 const naturalHeight = ref(0)
-const corners = ref<BoardCorners | null>(null)
+const mesh = ref<BoardMesh | null>(null)
+const gridMode = ref<'corners' | 'mesh'>('corners')
 
 const processing = ref(false)
 const analyzeError = ref<string | null>(null)
@@ -50,6 +52,7 @@ function onSelect(file: File) {
   result.value = null
   analyzeError.value = null
   flipped.value = false
+  gridMode.value = 'corners'
   const url = URL.createObjectURL(file)
   imageUrl.value = url
   const img = new Image()
@@ -57,13 +60,13 @@ function onSelect(file: File) {
     image.value = img
     naturalWidth.value = img.naturalWidth
     naturalHeight.value = img.naturalHeight
-    corners.value = defaultCorners(img.naturalWidth, img.naturalHeight)
+    mesh.value = meshFromCorners(defaultCorners(img.naturalWidth, img.naturalHeight))
   }
   img.src = url
 }
 
 async function analyze() {
-  if (!image.value || !corners.value) return
+  if (!image.value || !mesh.value) return
   processing.value = true
   analyzeError.value = null
   result.value = null
@@ -85,7 +88,7 @@ async function analyze() {
     ctx.drawImage(image.value, 0, 0)
     const colored = classifyDetections(ctx, detections)
 
-    result.value = mapDetectionsToBoard(colored, corners.value)
+    result.value = mapDetectionsToMesh(colored, mesh.value)
   } catch (e) {
     analyzeError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -98,7 +101,7 @@ function reset() {
   imageUrl.value = null
   image.value = null
   result.value = null
-  corners.value = null
+  mesh.value = null
 }
 </script>
 
@@ -162,29 +165,49 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
       <div v-else class="grid gap-6 lg:grid-cols-2">
         <!-- Left: input + corners -->
         <div class="flex flex-col gap-3">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-2">
             <h2 class="text-sm font-semibold text-slate-300">
-              {{ result ? 'Ảnh gốc + 4 góc' : 'Kéo 4 góc để lưới xanh khít các giao điểm bàn cờ' }}
+              {{
+                result
+                  ? 'Ảnh gốc + lưới'
+                  : gridMode === 'corners'
+                    ? 'Kéo 4 góc để lưới xanh phủ bàn cờ'
+                    : 'Kéo từng điểm xanh cho khớp giao điểm thật'
+              }}
             </h2>
-            <button class="text-xs text-slate-400 underline hover:text-slate-200" @click="reset">
-              Ảnh khác
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="!result"
+                class="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600"
+                @click="gridMode = gridMode === 'corners' ? 'mesh' : 'corners'"
+              >
+                {{ gridMode === 'corners' ? '⊞ Tinh chỉnh từng điểm' : '⊡ Về 4 góc' }}
+              </button>
+              <button class="text-xs text-slate-400 underline hover:text-slate-200" @click="reset">
+                Ảnh khác
+              </button>
+            </div>
           </div>
-          <BoardCornerEditor
-            v-if="corners && !result"
-            v-model="corners"
+          <BoardGridEditor
+            v-if="mesh && !result"
+            v-model="mesh"
+            :mode="gridMode"
             :image-url="imageUrl"
             :natural-width="naturalWidth"
             :natural-height="naturalHeight"
           />
           <DetectionCanvas
-            v-else-if="result && image"
+            v-else-if="result && image && mesh"
             :image="image"
             :natural-width="naturalWidth"
             :natural-height="naturalHeight"
-            :corners="corners!"
+            :mesh="mesh"
             :placed="displayPlaced"
           />
+
+          <p v-if="!result && gridMode === 'corners'" class="text-xs text-slate-500">
+            Mẹo: căn 4 góc trước, rồi bấm <b>Tinh chỉnh từng điểm</b> để kéo các giao điểm bị lệch cho khít bàn cong/nghiêng.
+          </p>
 
           <div class="flex gap-3">
             <button
@@ -200,7 +223,7 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
               class="flex-1 rounded-xl bg-slate-700 px-4 py-3 font-semibold text-slate-100 hover:bg-slate-600"
               @click="result = null"
             >
-              ← Chỉnh lại 4 góc
+              ← Chỉnh lại lưới
             </button>
           </div>
 
