@@ -7,9 +7,10 @@ import ResultPanel from './components/ResultPanel.vue'
 import { useYolo } from './composables/useYolo'
 import { classifyDetections } from './lib/extractColors'
 import { type MappingResult } from './lib/boardMapping'
-import { mapDetectionsToMesh, meshFromCorners } from './lib/boardMesh'
+import { estimateCornersFromPoints, mapDetectionsToMesh, meshFromCorners } from './lib/boardMesh'
+import { pieceAnchor } from './lib/boardMapping'
 import { boardToFen, flipBoard } from './lib/xiangqiFen'
-import type { Board, BoardCorners, BoardMesh, PlacedPiece } from './lib/types'
+import type { Board, BoardCorners, BoardMesh, Detection, PlacedPiece } from './lib/types'
 
 const { status, error: modelError, backend, load, detect } = useYolo()
 
@@ -19,6 +20,9 @@ const naturalWidth = ref(0)
 const naturalHeight = ref(0)
 const mesh = ref<BoardMesh | null>(null)
 const gridMode = ref<'corners' | 'mesh'>('corners')
+const meshEdited = ref(false) // user dragged the grid -> stop auto-fitting it
+const cachedDetections = ref<Detection[] | null>(null) // reuse across autofit/analyze
+const autoFitting = ref(false)
 
 const processing = ref(false)
 const analyzeError = ref<string | null>(null)
@@ -53,6 +57,8 @@ function onSelect(file: File) {
   analyzeError.value = null
   flipped.value = false
   gridMode.value = 'corners'
+  meshEdited.value = false
+  cachedDetections.value = null
   const url = URL.createObjectURL(file)
   imageUrl.value = url
   const img = new Image()
@@ -61,8 +67,48 @@ function onSelect(file: File) {
     naturalWidth.value = img.naturalWidth
     naturalHeight.value = img.naturalHeight
     mesh.value = meshFromCorners(defaultCorners(img.naturalWidth, img.naturalHeight))
+    // Auto-detect the board right away; the user can refine afterwards.
+    autoFit()
   }
   img.src = url
+}
+
+function onMeshEdit(v: BoardMesh) {
+  mesh.value = v
+  meshEdited.value = true
+}
+
+async function ensureModel(): Promise<boolean> {
+  if (status.value !== 'ready' && status.value !== 'loading') await load()
+  return status.value === 'ready'
+}
+
+async function ensureDetections(): Promise<Detection[]> {
+  if (cachedDetections.value) return cachedDetections.value
+  const dets = await detect(image.value!, naturalWidth.value, naturalHeight.value)
+  cachedDetections.value = dets
+  return dets
+}
+
+/** Run detection (once) and fit the grid to the detected pieces. */
+async function autoFit() {
+  if (!image.value) return
+  autoFitting.value = true
+  analyzeError.value = null
+  try {
+    if (!(await ensureModel())) return // missing/error -> banner handles it
+    const dets = await ensureDetections()
+    const corners = estimateCornersFromPoints(dets.map(pieceAnchor))
+    if (corners) {
+      mesh.value = meshFromCorners(corners)
+      meshEdited.value = false
+      gridMode.value = 'corners'
+    }
+  } catch (e) {
+    analyzeError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    autoFitting.value = false
+  }
 }
 
 async function analyze() {
@@ -71,14 +117,18 @@ async function analyze() {
   analyzeError.value = null
   result.value = null
   try {
-    if (status.value !== 'ready') await load()
-    if (status.value === 'missing') return // banner handles messaging
-    if (status.value !== 'ready') {
-      analyzeError.value = modelError.value ?? 'Không tải được model'
-      return
+    if (!(await ensureModel())) {
+      if (status.value !== 'missing') analyzeError.value = modelError.value ?? 'Không tải được model'
+      return // 'missing' -> banner handles messaging
     }
 
-    const detections = await detect(image.value, naturalWidth.value, naturalHeight.value)
+    const detections = await ensureDetections()
+
+    // If the user hasn't hand-tuned the grid, fit it to the detections now.
+    if (!meshEdited.value) {
+      const corners = estimateCornersFromPoints(detections.map(pieceAnchor))
+      if (corners) mesh.value = meshFromCorners(corners)
+    }
 
     // Sample colours from the full-resolution image.
     const canvas = document.createElement('canvas')
@@ -88,7 +138,7 @@ async function analyze() {
     ctx.drawImage(image.value, 0, 0)
     const colored = classifyDetections(ctx, detections)
 
-    result.value = mapDetectionsToMesh(colored, mesh.value)
+    result.value = mapDetectionsToMesh(colored, mesh.value!)
   } catch (e) {
     analyzeError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -100,6 +150,7 @@ function reset() {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   imageUrl.value = null
   image.value = null
+  cachedDetections.value = null
   result.value = null
   mesh.value = null
 }
@@ -178,10 +229,18 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
             <div class="flex items-center gap-2">
               <button
                 v-if="!result"
+                class="rounded-lg bg-sky-700 px-2.5 py-1 text-xs font-medium text-sky-50 hover:bg-sky-600 disabled:opacity-50"
+                :disabled="autoFitting"
+                @click="autoFit"
+              >
+                {{ autoFitting ? '⏳ Đang dò…' : '🎯 Tự dò bàn cờ' }}
+              </button>
+              <button
+                v-if="!result"
                 class="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600"
                 @click="gridMode = gridMode === 'corners' ? 'mesh' : 'corners'"
               >
-                {{ gridMode === 'corners' ? '⊞ Tinh chỉnh từng điểm' : '⊡ Về 4 góc' }}
+                {{ gridMode === 'corners' ? '⊞ Chỉnh từng điểm' : '⊡ Về 4 góc' }}
               </button>
               <button class="text-xs text-slate-400 underline hover:text-slate-200" @click="reset">
                 Ảnh khác
@@ -190,11 +249,12 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
           </div>
           <BoardGridEditor
             v-if="mesh && !result"
-            v-model="mesh"
+            :model-value="mesh"
             :mode="gridMode"
             :image-url="imageUrl"
             :natural-width="naturalWidth"
             :natural-height="naturalHeight"
+            @update:model-value="onMeshEdit"
           />
           <DetectionCanvas
             v-else-if="result && image && mesh"
@@ -205,8 +265,9 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
             :placed="displayPlaced"
           />
 
-          <p v-if="!result && gridMode === 'corners'" class="text-xs text-slate-500">
-            Mẹo: căn 4 góc trước, rồi bấm <b>Tinh chỉnh từng điểm</b> để kéo các giao điểm bị lệch cho khít bàn cong/nghiêng.
+          <p v-if="!result" class="text-xs text-slate-500">
+            Lưới được <b>tự dò</b> theo các quân. Sai thì bấm <b>🎯 Tự dò</b> lại, hoặc
+            <b>Chỉnh từng điểm</b> để kéo giao điểm cho khít.
           </p>
 
           <div class="flex gap-3">

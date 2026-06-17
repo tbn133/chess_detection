@@ -28,6 +28,28 @@ function dist(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
+/**
+ * Estimate the four board corners from a cloud of detected piece centres.
+ * Pieces lie on the 9x10 lattice, so the points extreme along each diagonal
+ * approximate the corner intersections. This is a good auto-guess for a roughly
+ * upright board (corner pieces present); the user refines it afterwards.
+ * Returns null when there are too few points to estimate.
+ */
+export function estimateCornersFromPoints(points: Point[]): BoardCorners | null {
+  if (points.length < 4) return null
+  let tl = points[0]
+  let tr = points[0]
+  let br = points[0]
+  let bl = points[0]
+  for (const p of points) {
+    if (p.x + p.y < tl.x + tl.y) tl = p
+    if (p.x + p.y > br.x + br.y) br = p
+    if (p.x - p.y > tr.x - tr.y) tr = p
+    if (p.x - p.y < bl.x - bl.y) bl = p
+  }
+  return { topLeft: tl, topRight: tr, bottomRight: br, bottomLeft: bl }
+}
+
 /** Average spacing between adjacent mesh intersections (image pixels). */
 export function meanSpacing(mesh: BoardMesh): number {
   let sum = 0
