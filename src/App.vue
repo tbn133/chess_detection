@@ -164,7 +164,7 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold text-slate-300">
-              {{ result ? 'Ảnh gốc + 4 góc' : 'Kéo 4 góc vào 4 giao điểm góc bàn cờ' }}
+              {{ result ? 'Ảnh gốc + 4 góc' : 'Kéo 4 góc để lưới xanh khít các giao điểm bàn cờ' }}
             </h2>
             <button class="text-xs text-slate-400 underline hover:text-slate-200" @click="reset">
               Ảnh khác
