@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+
+# Trained model is a large binary produced by the training pipeline.
+public/models/*.onnx
