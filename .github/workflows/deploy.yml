@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true # pull the LFS-tracked ONNX model so it ships in the build
 
       - uses: actions/setup-node@v4
         with:
@@ -33,10 +35,10 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Auto-enables Pages for the repo (source = GitHub Actions) if not already.
+      # Reads the repo's Pages config. Pages must be enabled once in
+      # Settings -> Pages -> Source: "GitHub Actions" (the Actions token is not
+      # allowed to create the Pages site automatically on this repo).
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:

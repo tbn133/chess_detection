@@ -4,5 +4,5 @@ dist/
 *.local
 .DS_Store
 
-# Trained model is a large binary produced by the training pipeline.
-public/models/*.onnx
+# NOTE: public/models/*.onnx is intentionally NOT ignored — it is tracked via
+# Git LFS (see .gitattributes) so the model can be versioned and deployed.

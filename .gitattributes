@@ -1,0 +1,4 @@
+# Track the trained ONNX model with Git LFS so it can be versioned and deployed.
+# Drop the exported file at public/models/xiangqi-yolo26n.onnx, commit, and push:
+# the deploy workflow checks out LFS files and bundles the model into the site.
+public/models/*.onnx filter=lfs diff=lfs merge=lfs -text
