@@ -11,6 +11,39 @@ const copied = ref(false)
 const ranks = Array.from({ length: RANKS }, (_, i) => i)
 const files = Array.from({ length: FILES }, (_, i) => i)
 
+// --- SVG board geometry: pieces sit ON the 9x10 line intersections ---
+const PAD = 0.7
+const VB_W = FILES - 1 + PAD * 2
+const VB_H = RANKS - 1 + PAD * 2
+function X(f: number) {
+  return PAD + f
+}
+function Y(r: number) {
+  return PAD + r
+}
+
+const hLines = computed(() => ranks.map((r) => `M ${X(0)} ${Y(r)} L ${X(FILES - 1)} ${Y(r)}`))
+const vLines = computed(() => {
+  const out: string[] = []
+  for (const f of files) {
+    if (f === 0 || f === FILES - 1) {
+      // Border files run the full height.
+      out.push(`M ${X(f)} ${Y(0)} L ${X(f)} ${Y(RANKS - 1)}`)
+    } else {
+      // Inner files break at the river (between rank 4 and rank 5).
+      out.push(`M ${X(f)} ${Y(0)} L ${X(f)} ${Y(4)}`)
+      out.push(`M ${X(f)} ${Y(5)} L ${X(f)} ${Y(RANKS - 1)}`)
+    }
+  }
+  return out
+})
+const palace = computed(() => [
+  `M ${X(3)} ${Y(0)} L ${X(5)} ${Y(2)}`,
+  `M ${X(5)} ${Y(0)} L ${X(3)} ${Y(2)}`,
+  `M ${X(3)} ${Y(7)} L ${X(5)} ${Y(9)}`,
+  `M ${X(5)} ${Y(7)} L ${X(3)} ${Y(9)}`,
+])
+
 const sorted = computed(() =>
   [...props.placed].sort((a, b) => a.rank - b.rank || a.file - b.file),
 )
@@ -46,31 +79,53 @@ async function copyFen() {
           ↻ Đổi bên
         </button>
       </div>
-      <div class="overflow-x-auto rounded-2xl bg-amber-100/95 p-2">
-        <div
-          class="grid gap-0"
-          :style="{ gridTemplateColumns: `repeat(${FILES}, minmax(0, 1fr))`, minWidth: '320px' }"
-        >
-          <template v-for="r in ranks" :key="r">
-            <div
-              v-for="f in files"
-              :key="`${r}-${f}`"
-              class="relative flex aspect-square items-center justify-center border border-amber-700/30"
+      <div class="overflow-x-auto rounded-2xl bg-amber-100 p-2">
+        <svg :viewBox="`0 0 ${VB_W} ${VB_H}`" class="block w-full" style="min-width: 280px">
+          <!-- grid lines -->
+          <path
+            v-for="(d, i) in [...hLines, ...vLines, ...palace]"
+            :key="i"
+            :d="d"
+            fill="none"
+            stroke="#a16207"
+            stroke-width="0.035"
+            stroke-linecap="round"
+          />
+          <!-- river -->
+          <text
+            :x="VB_W / 2"
+            :y="Y(4.5)"
+            text-anchor="middle"
+            dominant-baseline="central"
+            font-size="0.5"
+            fill="#a16207"
+            opacity="0.6"
+          >
+            楚 河 ⋮ 漢 界
+          </text>
+          <!-- pieces sit ON intersections -->
+          <g v-for="p in placed" :key="`${p.rank}-${p.file}`">
+            <circle
+              :cx="X(p.file)"
+              :cy="Y(p.rank)"
+              r="0.43"
+              :fill="p.color === 'red' ? '#fee2e2' : '#f1f5f9'"
+              :stroke="p.color === 'red' ? '#dc2626' : '#1e293b'"
+              stroke-width="0.06"
+            />
+            <text
+              :x="X(p.file)"
+              :y="Y(p.rank)"
+              text-anchor="middle"
+              dominant-baseline="central"
+              font-size="0.56"
+              font-weight="bold"
+              :fill="p.color === 'red' ? '#dc2626' : '#0f172a'"
             >
-              <span
-                v-if="board[r][f]"
-                class="flex h-[78%] w-[78%] items-center justify-center rounded-full border-2 text-[2.6vw] font-bold leading-none sm:text-base"
-                :class="
-                  board[r][f]!.color === 'red'
-                    ? 'border-red-600 bg-amber-50 text-red-600'
-                    : 'border-slate-800 bg-amber-50 text-slate-900'
-                "
-              >
-                {{ han(board[r][f]!) }}
-              </span>
-            </div>
-          </template>
-        </div>
+              {{ han(p) }}
+            </text>
+          </g>
+        </svg>
       </div>
       <p class="mt-2 text-xs text-slate-400">
         Tổng: {{ placed.length }} quân — <span class="text-red-400">Đỏ {{ redCount }}</span> ·
