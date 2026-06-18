@@ -4,6 +4,7 @@ import { FILE_LABELS, FILES, PIECE_TYPES, PIECE_TYPE_BY_ID, RANKS } from '../lib
 import type { PieceColor } from '../lib/constants'
 import { squareLabel } from '../lib/xiangqiFen'
 import { validateXiangqi, type ValidationResult } from '../lib/validateXiangqi'
+import { legalMoves, type Square } from '../lib/xiangqiMoves'
 import type { Board, PlacedPiece } from '../lib/types'
 
 const props = defineProps<{ board: Board; fen: string }>()
@@ -76,27 +77,48 @@ function pickErase() {
   tool.value = tool.value === 'erase' ? null : 'erase'
 }
 
+// --- View mode: tap a piece to see its legal moves ---
+const selected = ref<{ file: number; rank: number } | null>(null)
+const moves = computed<Square[]>(() => {
+  const s = selected.value
+  if (!s || !props.board[s.rank][s.file]) return []
+  return legalMoves(props.board, s.file, s.rank)
+})
+function isCapture(sq: Square) {
+  return !!props.board[sq.rank][sq.file]
+}
+// Clear selection / verdict when the board or mode changes.
+watch([() => props.board, editing], () => {
+  selected.value = null
+})
+
 function onIntersection(r: number, f: number) {
-  if (!editing.value || !tool.value) return
-  const next = props.board.map((row) => row.slice())
-  if (tool.value === 'erase') {
-    next[r][f] = null
-  } else {
-    const { classId, color } = tool.value
-    next[r][f] = {
-      classId,
-      type: PIECE_TYPE_BY_ID[classId].type,
-      color,
-      file: f,
-      rank: r,
-      score: 1,
-      x1: 0,
-      y1: 0,
-      x2: 0,
-      y2: 0,
+  if (editing.value) {
+    if (!tool.value) return
+    const next = props.board.map((row) => row.slice())
+    if (tool.value === 'erase') {
+      next[r][f] = null
+    } else {
+      const { classId, color } = tool.value
+      next[r][f] = {
+        classId,
+        type: PIECE_TYPE_BY_ID[classId].type,
+        color,
+        file: f,
+        rank: r,
+        score: 1,
+        x1: 0,
+        y1: 0,
+        x2: 0,
+        y2: 0,
+      }
     }
+    emit('update', next)
+    return
   }
-  emit('update', next)
+  // View mode: toggle the piece whose moves we show.
+  const isSame = selected.value && selected.value.file === f && selected.value.rank === r
+  selected.value = !isSame && props.board[r][f] ? { file: f, rank: r } : null
 }
 
 async function copyFen() {
@@ -184,23 +206,50 @@ watch(
               {{ han(p) }}
             </text>
           </g>
-          <!-- click targets for manual editing -->
-          <template v-if="editing">
-            <g v-for="r in ranks" :key="`row-${r}`">
+          <!-- legal-move hints (view mode) -->
+          <template v-if="!editing && selected">
+            <circle
+              :cx="X(selected.file)"
+              :cy="Y(selected.rank)"
+              r="0.5"
+              fill="none"
+              stroke="#10b981"
+              stroke-width="0.09"
+              class="pointer-events-none"
+            />
+            <g v-for="(mv, i) in moves" :key="`mv-${i}`" class="pointer-events-none">
               <circle
-                v-for="f in files"
-                :key="`hit-${r}-${f}`"
-                :cx="X(f)"
-                :cy="Y(r)"
+                v-if="isCapture(mv)"
+                :cx="X(mv.file)"
+                :cy="Y(mv.rank)"
                 r="0.5"
-                fill="transparent"
-                class="cursor-pointer"
-                @click="onIntersection(r, f)"
+                fill="none"
+                stroke="#10b981"
+                stroke-width="0.09"
+                stroke-dasharray="0.18 0.14"
               />
+              <circle v-else :cx="X(mv.file)" :cy="Y(mv.rank)" r="0.16" fill="#10b981" />
             </g>
           </template>
+          <!-- click targets (select to view moves, or edit when in edit mode) -->
+          <g v-for="r in ranks" :key="`row-${r}`">
+            <circle
+              v-for="f in files"
+              :key="`hit-${r}-${f}`"
+              :cx="X(f)"
+              :cy="Y(r)"
+              r="0.5"
+              fill="transparent"
+              class="cursor-pointer"
+              @click="onIntersection(r, f)"
+            />
+          </g>
         </svg>
       </div>
+
+      <p v-if="!editing" class="mt-1 text-[11px] text-slate-500">
+        Bấm vào một quân để xem nước đi hợp lệ (chấm xanh = đi, vòng xanh = ăn).
+      </p>
 
       <!-- editing palette -->
       <div v-if="editing" class="mt-2 rounded-xl bg-slate-800/60 p-2">
