@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { mapDetectionsToMesh, meanSpacing, meshFromCorners } from './boardMesh'
+import {
+  guessOrientation,
+  mapDetectionsToMesh,
+  meanSpacing,
+  meshFromCorners,
+  meshFromCornersOriented,
+} from './boardMesh'
 import { FILES, PIECE_TYPE_BY_ID, RANKS } from './constants'
 import type { ColoredDetection } from './boardMapping'
 import type { BoardCorners, PieceColor } from './types'
@@ -36,6 +42,27 @@ describe('meshFromCorners', () => {
 
   it('has even 100px spacing for this 800x900 board', () => {
     expect(meanSpacing(meshFromCorners(corners))).toBeCloseTo(100, 5)
+  })
+})
+
+describe('orientation', () => {
+  it('guesses portrait for a taller-than-wide board, landscape for wider', () => {
+    expect(guessOrientation(corners)).toBe('portrait') // 800w x 900h
+    const wide: BoardCorners = {
+      topLeft: { x: 0, y: 0 },
+      topRight: { x: 900, y: 0 },
+      bottomRight: { x: 900, y: 800 },
+      bottomLeft: { x: 0, y: 800 },
+    }
+    expect(guessOrientation(wide)).toBe('landscape')
+  })
+
+  it('landscape mesh puts the 9 files down the left edge', () => {
+    const m = meshFromCornersOriented(corners, 'landscape')
+    // file axis (rank 0): from intersection (f0,r0) to (f8,r0) should run vertically.
+    const dx = Math.abs(m[0][FILES - 1].x - m[0][0].x)
+    const dy = Math.abs(m[0][FILES - 1].y - m[0][0].y)
+    expect(dy).toBeGreaterThan(dx)
   })
 })
 

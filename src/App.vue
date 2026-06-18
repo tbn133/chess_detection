@@ -7,10 +7,17 @@ import ResultPanel from './components/ResultPanel.vue'
 import { useYolo } from './composables/useYolo'
 import { classifyDetections } from './lib/extractColors'
 import { type MappingResult } from './lib/boardMapping'
-import { estimateCornersFromPoints, mapDetectionsToMesh, meshFromCorners } from './lib/boardMesh'
+import {
+  estimateCornersFromPoints,
+  guessOrientation,
+  mapDetectionsToMesh,
+  meshFromCorners,
+  meshFromCornersOriented,
+  type Orientation,
+} from './lib/boardMesh'
 import { pieceAnchor } from './lib/boardMapping'
 import { boardToFen, flipBoard } from './lib/xiangqiFen'
-import type { Board, BoardCorners, BoardMesh, Detection, PlacedPiece } from './lib/types'
+import type { Board, BoardCorners, BoardMesh, Detection, PlacedPiece, Point } from './lib/types'
 
 const { status, error: modelError, backend, load, detect } = useYolo()
 
@@ -23,6 +30,8 @@ const gridMode = ref<'corners' | 'mesh'>('corners')
 const meshEdited = ref(false) // user dragged the grid -> stop auto-fitting it
 const cachedDetections = ref<Detection[] | null>(null) // reuse across autofit/analyze
 const autoFitting = ref(false)
+const detectedCorners = ref<{ topLeft: Point; topRight: Point; bottomRight: Point; bottomLeft: Point } | null>(null)
+const orientation = ref<Orientation>('portrait')
 
 const processing = ref(false)
 const analyzeError = ref<string | null>(null)
@@ -59,6 +68,8 @@ function onSelect(file: File) {
   gridMode.value = 'corners'
   meshEdited.value = false
   cachedDetections.value = null
+  detectedCorners.value = null
+  orientation.value = 'portrait'
   const url = URL.createObjectURL(file)
   imageUrl.value = url
   const img = new Image()
@@ -66,7 +77,9 @@ function onSelect(file: File) {
     image.value = img
     naturalWidth.value = img.naturalWidth
     naturalHeight.value = img.naturalHeight
-    mesh.value = meshFromCorners(defaultCorners(img.naturalWidth, img.naturalHeight))
+    const dc = defaultCorners(img.naturalWidth, img.naturalHeight)
+    detectedCorners.value = dc
+    mesh.value = meshFromCorners(dc)
     // Auto-detect the board right away; the user can refine afterwards.
     autoFit()
   }
@@ -76,6 +89,15 @@ function onSelect(file: File) {
 function onMeshEdit(v: BoardMesh) {
   mesh.value = v
   meshEdited.value = true
+}
+
+function toggleOrientation() {
+  orientation.value = orientation.value === 'portrait' ? 'landscape' : 'portrait'
+  if (detectedCorners.value) {
+    mesh.value = meshFromCornersOriented(detectedCorners.value, orientation.value)
+    meshEdited.value = false
+    gridMode.value = 'corners'
+  }
 }
 
 async function ensureModel(): Promise<boolean> {
@@ -100,7 +122,9 @@ async function autoFit() {
     const dets = await ensureDetections()
     const corners = estimateCornersFromPoints(dets.map(pieceAnchor))
     if (corners) {
-      mesh.value = meshFromCorners(corners)
+      detectedCorners.value = corners
+      orientation.value = guessOrientation(corners)
+      mesh.value = meshFromCornersOriented(corners, orientation.value)
       meshEdited.value = false
       gridMode.value = 'corners'
     }
@@ -126,8 +150,11 @@ async function analyze() {
 
     // If the user hasn't hand-tuned the grid, fit it to the detections now.
     if (!meshEdited.value) {
-      const corners = estimateCornersFromPoints(detections.map(pieceAnchor))
-      if (corners) mesh.value = meshFromCorners(corners)
+      const corners = detectedCorners.value ?? estimateCornersFromPoints(detections.map(pieceAnchor))
+      if (corners) {
+        detectedCorners.value = corners
+        mesh.value = meshFromCornersOriented(corners, orientation.value)
+      }
     }
 
     // Sample colours from the full-resolution image.
@@ -230,7 +257,7 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
                     : 'Kéo từng điểm xanh cho khớp giao điểm thật'
               }}
             </h2>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center justify-end gap-2">
               <button
                 v-if="!result"
                 class="rounded-lg bg-sky-700 px-2.5 py-1 text-xs font-medium text-sky-50 hover:bg-sky-600 disabled:opacity-50"
@@ -242,9 +269,16 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
               <button
                 v-if="!result"
                 class="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600"
+                @click="toggleOrientation"
+              >
+                ↻ {{ orientation === 'portrait' ? 'Dọc' : 'Ngang' }}
+              </button>
+              <button
+                v-if="!result"
+                class="rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600"
                 @click="gridMode = gridMode === 'corners' ? 'mesh' : 'corners'"
               >
-                {{ gridMode === 'corners' ? '⊞ Chỉnh từng điểm' : '⊡ Về 4 góc' }}
+                {{ gridMode === 'corners' ? '⊞ Chỉnh điểm' : '⊡ Về 4 góc' }}
               </button>
               <button class="text-xs text-slate-400 underline hover:text-slate-200" @click="reset">
                 Ảnh khác

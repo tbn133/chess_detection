@@ -28,6 +28,40 @@ function dist(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
+export type Orientation = 'portrait' | 'landscape'
+
+/**
+ * Re-label the four board corners for the chosen orientation. In 'portrait'
+ * the 9 files run along the top edge (TL→TR). In 'landscape' the board is
+ * rotated 90°, so the 9 files run down the left edge and the 10 ranks run along
+ * the bottom — achieved by cycling the corner roles.
+ */
+export function orientCorners(c: BoardCorners, orientation: Orientation): BoardCorners {
+  if (orientation === 'portrait') return c
+  return {
+    topLeft: c.bottomLeft,
+    topRight: c.topLeft,
+    bottomRight: c.topRight,
+    bottomLeft: c.bottomRight,
+  }
+}
+
+/** Build a mesh from corners, honouring the chosen orientation. */
+export function meshFromCornersOriented(c: BoardCorners, orientation: Orientation): BoardMesh {
+  return meshFromCorners(orientCorners(c, orientation))
+}
+
+/**
+ * Guess orientation from the quad's edge lengths. A xiangqi board's playing
+ * area is 8 units wide × 9 tall, so upright it is slightly taller than wide;
+ * when the detected quad is wider than tall, the board was shot rotated.
+ */
+export function guessOrientation(c: BoardCorners): Orientation {
+  const w = (dist(c.topLeft, c.topRight) + dist(c.bottomLeft, c.bottomRight)) / 2
+  const h = (dist(c.topLeft, c.bottomLeft) + dist(c.topRight, c.bottomRight)) / 2
+  return w > h ? 'landscape' : 'portrait'
+}
+
 /**
  * Estimate the four board corners from a cloud of detected piece centres.
  * Pieces lie on the 9x10 lattice, so the points extreme along each diagonal
