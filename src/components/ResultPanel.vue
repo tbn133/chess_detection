@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { FILE_LABELS, FILES, PIECE_TYPE_BY_ID, RANKS } from '../lib/constants'
+import { FILE_LABELS, FILES, PIECE_TYPES, PIECE_TYPE_BY_ID, RANKS } from '../lib/constants'
+import type { PieceColor } from '../lib/constants'
 import { squareLabel } from '../lib/xiangqiFen'
 import type { Board, PlacedPiece } from '../lib/types'
 
-const props = defineProps<{ board: Board; placed: PlacedPiece[]; fen: string }>()
-const emit = defineEmits<{ (e: 'flip'): void }>()
+const props = defineProps<{ board: Board; fen: string }>()
+const emit = defineEmits<{ (e: 'flip'): void; (e: 'update', board: Board): void }>()
 
 const copied = ref(false)
 const ranks = Array.from({ length: RANKS }, (_, i) => i)
@@ -27,10 +28,8 @@ const vLines = computed(() => {
   const out: string[] = []
   for (const f of files) {
     if (f === 0 || f === FILES - 1) {
-      // Border files run the full height.
       out.push(`M ${X(f)} ${Y(0)} L ${X(f)} ${Y(RANKS - 1)}`)
     } else {
-      // Inner files break at the river (between rank 4 and rank 5).
       out.push(`M ${X(f)} ${Y(0)} L ${X(f)} ${Y(4)}`)
       out.push(`M ${X(f)} ${Y(5)} L ${X(f)} ${Y(RANKS - 1)}`)
     }
@@ -44,19 +43,59 @@ const palace = computed(() => [
   `M ${X(5)} ${Y(7)} L ${X(3)} ${Y(9)}`,
 ])
 
-const sorted = computed(() =>
-  [...props.placed].sort((a, b) => a.rank - b.rank || a.file - b.file),
+const placed = computed<PlacedPiece[]>(() =>
+  props.board.flat().filter((p): p is PlacedPiece => p !== null),
 )
-const redCount = computed(() => props.placed.filter((p) => p.color === 'red').length)
-const blackCount = computed(() => props.placed.filter((p) => p.color === 'black').length)
+const sorted = computed(() => [...placed.value].sort((a, b) => a.rank - b.rank || a.file - b.file))
+const redCount = computed(() => placed.value.filter((p) => p.color === 'red').length)
+const blackCount = computed(() => placed.value.filter((p) => p.color === 'black').length)
 
-function han(p: PlacedPiece) {
+function han(p: { classId: number; color: PieceColor }) {
   const info = PIECE_TYPE_BY_ID[p.classId]
   return p.color === 'red' ? info.hanRed : info.hanBlack
 }
 function name(p: PlacedPiece) {
   const info = PIECE_TYPE_BY_ID[p.classId]
   return `${info.vi} (${info.en})`
+}
+
+// --- Manual editing ---
+type Tool = { classId: number; color: PieceColor } | 'erase' | null
+const tool = ref<Tool>(null)
+const editing = ref(false)
+
+function toolKey(t: Tool) {
+  return t === null ? 'none' : t === 'erase' ? 'erase' : `${t.color}-${t.classId}`
+}
+function pickPiece(classId: number, color: PieceColor) {
+  const same = tool.value && tool.value !== 'erase' && tool.value.classId === classId && tool.value.color === color
+  tool.value = same ? null : { classId, color }
+}
+function pickErase() {
+  tool.value = tool.value === 'erase' ? null : 'erase'
+}
+
+function onIntersection(r: number, f: number) {
+  if (!editing.value || !tool.value) return
+  const next = props.board.map((row) => row.slice())
+  if (tool.value === 'erase') {
+    next[r][f] = null
+  } else {
+    const { classId, color } = tool.value
+    next[r][f] = {
+      classId,
+      type: PIECE_TYPE_BY_ID[classId].type,
+      color,
+      file: f,
+      rank: r,
+      score: 1,
+      x1: 0,
+      y1: 0,
+      x2: 0,
+      y2: 0,
+    }
+  }
+  emit('update', next)
 }
 
 async function copyFen() {
@@ -70,18 +109,27 @@ async function copyFen() {
   <div class="flex flex-col gap-6">
     <!-- Board diagram -->
     <section>
-      <div class="mb-2 flex items-center justify-between">
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-300">Sơ đồ nhận diện</h3>
-        <button
-          class="rounded-lg bg-slate-700 px-3 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600"
-          @click="emit('flip')"
-        >
-          ↻ Đổi bên
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            class="rounded-lg px-3 py-1 text-xs font-medium"
+            :class="editing ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'"
+            @click="editing = !editing"
+          >
+            {{ editing ? '✓ Đang sửa' : '✎ Sửa tay' }}
+          </button>
+          <button
+            class="rounded-lg bg-slate-700 px-3 py-1 text-xs font-medium text-slate-100 hover:bg-slate-600"
+            @click="emit('flip')"
+          >
+            ↻ Đổi bên
+          </button>
+        </div>
       </div>
+
       <div class="overflow-x-auto rounded-2xl bg-amber-100 p-2">
         <svg :viewBox="`0 0 ${VB_W} ${VB_H}`" class="block w-full" style="min-width: 280px">
-          <!-- grid lines -->
           <path
             v-for="(d, i) in [...hLines, ...vLines, ...palace]"
             :key="i"
@@ -91,7 +139,6 @@ async function copyFen() {
             stroke-width="0.035"
             stroke-linecap="round"
           />
-          <!-- river -->
           <text
             :x="VB_W / 2"
             :y="Y(4.5)"
@@ -103,8 +150,8 @@ async function copyFen() {
           >
             楚 河 ⋮ 漢 界
           </text>
-          <!-- pieces sit ON intersections -->
-          <g v-for="p in placed" :key="`${p.rank}-${p.file}`">
+          <!-- pieces -->
+          <g v-for="p in placed" :key="`${p.rank}-${p.file}`" class="pointer-events-none">
             <circle
               :cx="X(p.file)"
               :cy="Y(p.rank)"
@@ -125,8 +172,56 @@ async function copyFen() {
               {{ han(p) }}
             </text>
           </g>
+          <!-- click targets for manual editing -->
+          <template v-if="editing">
+            <g v-for="r in ranks" :key="`row-${r}`">
+              <circle
+                v-for="f in files"
+                :key="`hit-${r}-${f}`"
+                :cx="X(f)"
+                :cy="Y(r)"
+                r="0.5"
+                fill="transparent"
+                class="cursor-pointer"
+                @click="onIntersection(r, f)"
+              />
+            </g>
+          </template>
         </svg>
       </div>
+
+      <!-- editing palette -->
+      <div v-if="editing" class="mt-2 rounded-xl bg-slate-800/60 p-2">
+        <p class="mb-1.5 text-[11px] text-slate-400">
+          Chọn quân rồi bấm vào giao điểm để đặt/đổi. Chọn 🚫 để xoá.
+        </p>
+        <div class="space-y-1">
+          <div v-for="color in (['red', 'black'] as const)" :key="color" class="flex flex-wrap gap-1">
+            <button
+              v-for="t in PIECE_TYPES"
+              :key="`${color}-${t.id}`"
+              class="flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-bold transition"
+              :class="[
+                color === 'red' ? 'bg-amber-50 text-red-600 border-red-500' : 'bg-slate-100 text-slate-900 border-slate-700',
+                toolKey(tool) === `${color}-${t.id}` ? 'ring-2 ring-emerald-400 scale-110' : 'opacity-90 hover:opacity-100',
+              ]"
+              @click="pickPiece(t.id, color)"
+            >
+              {{ color === 'red' ? t.hanRed : t.hanBlack }}
+            </button>
+            <span v-if="color === 'red'" class="self-center text-[11px] text-red-400">Đỏ</span>
+            <span v-else class="self-center text-[11px] text-sky-400">Đen</span>
+          </div>
+          <button
+            class="mt-1 rounded-lg px-3 py-1 text-xs font-medium"
+            :class="tool === 'erase' ? 'bg-rose-600 text-white' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'"
+            @click="pickErase"
+          >
+            🚫 Xoá quân
+          </button>
+        </div>
+      </div>
+
       <p class="mt-2 text-xs text-slate-400">
         Tổng: {{ placed.length }} quân — <span class="text-red-400">Đỏ {{ redCount }}</span> ·
         <span class="text-sky-400">Đen {{ blackCount }}</span>
@@ -157,7 +252,6 @@ async function copyFen() {
               <th class="px-3 py-2 font-medium">Vị trí</th>
               <th class="px-3 py-2 font-medium">Quân</th>
               <th class="px-3 py-2 font-medium">Bên</th>
-              <th class="px-3 py-2 text-right font-medium">Tin cậy</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800">
@@ -170,12 +264,9 @@ async function copyFen() {
               <td class="px-3 py-1.5" :class="p.color === 'red' ? 'text-red-400' : 'text-sky-400'">
                 {{ p.color === 'red' ? 'Đỏ' : 'Đen' }}
               </td>
-              <td class="px-3 py-1.5 text-right font-mono text-slate-400">
-                {{ (p.score * 100).toFixed(0) }}%
-              </td>
             </tr>
             <tr v-if="!sorted.length">
-              <td colspan="4" class="px-3 py-4 text-center text-slate-500">Chưa có quân nào</td>
+              <td colspan="3" class="px-3 py-4 text-center text-slate-500">Chưa có quân nào</td>
             </tr>
           </tbody>
         </table>

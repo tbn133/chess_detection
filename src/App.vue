@@ -36,18 +36,28 @@ const orientation = ref<Orientation>('portrait')
 const processing = ref(false)
 const analyzeError = ref<string | null>(null)
 const result = ref<MappingResult | null>(null)
-const flipped = ref(false)
+// Working board shown in the result panel; starts from the analysis and can be
+// hand-edited or flipped without re-running detection.
+const editBoard = ref<Board | null>(null)
 
-const displayBoard = computed<Board | null>(() => {
-  if (!result.value) return null
-  return flipped.value ? flipBoard(result.value.board) : result.value.board
-})
+const displayBoard = computed<Board | null>(() => editBoard.value)
 const displayPlaced = computed<PlacedPiece[]>(() => {
   const b = displayBoard.value
   if (!b) return []
   return b.flat().filter((p): p is PlacedPiece => p !== null)
 })
 const fen = computed(() => (displayBoard.value ? boardToFen(displayBoard.value) : ''))
+
+function flipResult() {
+  if (editBoard.value) editBoard.value = flipBoard(editBoard.value)
+}
+function editResult(b: Board) {
+  editBoard.value = b
+}
+function backToGrid() {
+  result.value = null
+  editBoard.value = null
+}
 
 function defaultCorners(w: number, h: number): BoardCorners {
   const mx = w * 0.06
@@ -63,8 +73,8 @@ function defaultCorners(w: number, h: number): BoardCorners {
 function onSelect(file: File) {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
   result.value = null
+  editBoard.value = null
   analyzeError.value = null
-  flipped.value = false
   gridMode.value = 'corners'
   meshEdited.value = false
   cachedDetections.value = null
@@ -166,6 +176,7 @@ async function analyze() {
     const colored = classifyDetections(ctx, detections)
 
     result.value = mapDetectionsToMesh(colored, mesh.value!)
+    editBoard.value = result.value.board
   } catch (e) {
     analyzeError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -179,6 +190,7 @@ function reset() {
   image.value = null
   cachedDetections.value = null
   result.value = null
+  editBoard.value = null
   mesh.value = null
 }
 </script>
@@ -320,7 +332,7 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
             <button
               v-else
               class="flex-1 rounded-xl bg-slate-700 px-4 py-3 font-semibold text-slate-100 hover:bg-slate-600"
-              @click="result = null"
+              @click="backToGrid"
             >
               ← Chỉnh lại lưới
             </button>
@@ -336,9 +348,9 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
           <ResultPanel
             v-if="result && displayBoard"
             :board="displayBoard"
-            :placed="displayPlaced"
             :fen="fen"
-            @flip="flipped = !flipped"
+            @flip="flipResult"
+            @update="editResult"
           />
           <div
             v-else
