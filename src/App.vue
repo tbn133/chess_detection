@@ -5,6 +5,8 @@ import BoardGridEditor from './components/BoardGridEditor.vue'
 import DetectionCanvas from './components/DetectionCanvas.vue'
 import ResultPanel from './components/ResultPanel.vue'
 import { useYolo } from './composables/useYolo'
+import { useBoardPose } from './composables/useBoardPose'
+import { FILES, RANKS } from './lib/constants'
 import { classifyDetections } from './lib/extractColors'
 import { type MappingResult } from './lib/boardMapping'
 import {
@@ -22,6 +24,7 @@ import { boardToFen, flipBoard } from './lib/xiangqiFen'
 import type { Board, BoardCorners, BoardMesh, Detection, PlacedPiece, Point } from './lib/types'
 
 const { status, error: modelError, backend, load, detect } = useYolo()
+const { detectCorners: detectBoardPose } = useBoardPose()
 
 const imageUrl = ref<string | null>(null)
 const image = ref<HTMLImageElement | null>(null)
@@ -34,6 +37,7 @@ const cachedDetections = ref<Detection[] | null>(null) // reuse across autofit/a
 const autoFitting = ref(false)
 const detectedCorners = ref<{ topLeft: Point; topRight: Point; bottomRight: Point; bottomLeft: Point } | null>(null)
 const orientation = ref<Orientation>('portrait')
+const fileName = ref('board')
 
 const processing = ref(false)
 const analyzeError = ref<string | null>(null)
@@ -82,6 +86,7 @@ function onSelect(file: File) {
   cachedDetections.value = null
   detectedCorners.value = null
   orientation.value = 'portrait'
+  fileName.value = file.name.replace(/\.[^.]+$/, '') || 'board'
   const url = URL.createObjectURL(file)
   imageUrl.value = url
   const img = new Image()
@@ -101,6 +106,44 @@ function onSelect(file: File) {
 function onMeshEdit(v: BoardMesh) {
   mesh.value = v
   meshEdited.value = true
+}
+
+/** Export the current 4 corners as a YOLO-pose label (.txt) for training the
+ *  board-corner model. Reuses the manual corner alignment as the annotation. */
+function exportCornerLabel() {
+  const m = mesh.value
+  if (!m) return
+  const c4: Point[] = [m[0][0], m[0][FILES - 1], m[RANKS - 1][FILES - 1], m[RANKS - 1][0]]
+  // Order by image position so keypoints are consistent: TL, TR, BR, BL.
+  let tl = c4[0]
+  let tr = c4[0]
+  let br = c4[0]
+  let bl = c4[0]
+  for (const p of c4) {
+    if (p.x + p.y < tl.x + tl.y) tl = p
+    if (p.x + p.y > br.x + br.y) br = p
+    if (p.x - p.y > tr.x - tr.y) tr = p
+    if (p.x - p.y < bl.x - bl.y) bl = p
+  }
+  const ordered = [tl, tr, br, bl]
+  const W = naturalWidth.value
+  const H = naturalHeight.value
+  const xs = ordered.map((p) => p.x)
+  const ys = ordered.map((p) => p.y)
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2 / W
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2 / H
+  const w = Math.min(1, ((Math.max(...xs) - Math.min(...xs)) / W) * 1.02)
+  const h = Math.min(1, ((Math.max(...ys) - Math.min(...ys)) / H) * 1.02)
+  let line = `0 ${cx.toFixed(6)} ${cy.toFixed(6)} ${w.toFixed(6)} ${h.toFixed(6)}`
+  for (const p of ordered) line += ` ${(p.x / W).toFixed(6)} ${(p.y / H).toFixed(6)} 2`
+
+  const blob = new Blob([line + '\n'], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${fileName.value}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 function toggleOrientation() {
@@ -135,21 +178,30 @@ async function autoFit() {
   autoFitting.value = true
   analyzeError.value = null
   try {
-    // 1) Try to detect the actual board polygon from the image.
+    // 1) Preferred: trained board-corner pose model (if present).
     let corners: BoardCorners | null = null
     try {
-      corners = await detectBoardCorners(image.value)
+      corners = await detectBoardPose(image.value, naturalWidth.value, naturalHeight.value)
     } catch {
-      corners = null // OpenCV failed/blocked -> fall through to piece estimate
+      corners = null
     }
 
-    // 2) Fallback: estimate from detected pieces (needs the model).
+    // 2) Else: detect the board polygon with OpenCV.
+    if (!corners) {
+      try {
+        corners = await detectBoardCorners(image.value)
+      } catch {
+        corners = null
+      }
+    }
+
+    // 3) Fallback: estimate from detected pieces (needs the model).
     if (!corners && (await ensureModel())) {
       const dets = await ensureDetections()
       corners = estimateCornersFromPoints(dets.map(pieceAnchor))
     }
 
-    // 3) Reject twisted/degenerate quads; use a clean default rectangle instead
+    // 4) Reject twisted/degenerate quads; use a clean default rectangle instead
     //    so we never show a bow-tie grid.
     if (!corners || !isConvexQuad(corners)) {
       corners = defaultCorners(naturalWidth.value, naturalHeight.value)
@@ -313,6 +365,14 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
                 @click="gridMode = gridMode === 'corners' ? 'mesh' : 'corners'"
               >
                 {{ gridMode === 'corners' ? '⊞ Chỉnh điểm' : '⊡ Về 4 góc' }}
+              </button>
+              <button
+                v-if="!result"
+                class="rounded-lg bg-fuchsia-700 px-2.5 py-1 text-xs font-medium text-fuchsia-50 hover:bg-fuchsia-600"
+                title="Căn 4 góc chính xác rồi bấm để xuất nhãn YOLO-pose (train board)"
+                @click="exportCornerLabel"
+              >
+                ⬇ Nhãn góc
               </button>
               <button class="text-xs text-slate-400 underline hover:text-slate-200" @click="reset">
                 Ảnh khác
