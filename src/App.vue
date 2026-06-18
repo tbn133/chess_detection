@@ -161,7 +161,11 @@ function reset() {
     <header class="border-b border-slate-800 bg-slate-900/70 backdrop-blur">
       <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <div class="flex items-center gap-2">
-          <span class="text-2xl">♟️</span>
+          <span
+            class="flex h-9 w-9 items-center justify-center rounded-full border-2 border-red-500 bg-amber-50 text-lg font-bold text-red-600"
+          >
+            帥
+          </span>
           <div>
             <h1 class="text-base font-bold sm:text-lg">Xiangqi Vision</h1>
             <p class="text-[11px] text-slate-400">Nhận diện cờ tướng · YOLO26n + ONNX (chạy trong trình duyệt)</p>

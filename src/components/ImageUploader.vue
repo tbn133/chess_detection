@@ -26,7 +26,11 @@ function onDrop(e: DragEvent) {
     @drop.prevent="onDrop"
   >
     <div class="flex flex-col items-center gap-4 px-6 py-10 text-center">
-      <div class="text-5xl">♟️</div>
+      <div
+        class="flex h-16 w-16 items-center justify-center rounded-full border-4 border-red-500 bg-amber-50 text-3xl font-bold text-red-600"
+      >
+        帥
+      </div>
       <div>
         <p class="text-lg font-semibold text-slate-100">Tải ảnh bàn cờ tướng</p>
         <p class="mt-1 text-sm text-slate-400">Kéo–thả ảnh vào đây, hoặc chọn từ máy / chụp ảnh</p>
