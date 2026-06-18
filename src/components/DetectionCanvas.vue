@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue'
 import { FILES, PIECE_TYPE_BY_ID, RANKS } from '../lib/constants'
-import type { BoardMesh, PlacedPiece } from '../lib/types'
+import type { BoardMesh, PlacedPiece, Point } from '../lib/types'
 
 const props = defineProps<{
   image: HTMLImageElement
@@ -12,6 +12,21 @@ const props = defineProps<{
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+
+function dist(a: Point, b: Point) {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+// Local cell size at intersection (f,r), used to size the piece marker.
+function cellSize(r: number, f: number): number {
+  const m = props.mesh
+  const ds: number[] = []
+  if (f + 1 < FILES) ds.push(dist(m[r][f], m[r][f + 1]))
+  if (f - 1 >= 0) ds.push(dist(m[r][f], m[r][f - 1]))
+  if (r + 1 < RANKS) ds.push(dist(m[r][f], m[r + 1][f]))
+  if (r - 1 >= 0) ds.push(dist(m[r][f], m[r - 1][f]))
+  return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 30
+}
 
 function draw() {
   const canvas = canvasRef.value
@@ -24,7 +39,7 @@ function draw() {
   const line = Math.max(1.5, Math.max(props.naturalWidth, props.naturalHeight) / 500)
   const m = props.mesh
 
-  // Grid (from the deformable mesh) for visual verification of alignment.
+  // Grid (from the deformable mesh).
   ctx.strokeStyle = 'rgba(56,189,248,0.55)'
   ctx.lineWidth = line
   for (let r = 0; r < RANKS; r++) {
@@ -40,24 +55,28 @@ function draw() {
     ctx.stroke()
   }
 
-  // Detection boxes + labels.
-  const font = Math.max(12, props.naturalHeight / 40)
-  ctx.font = `bold ${font}px sans-serif`
-  ctx.textBaseline = 'top'
+  // Draw each placed piece AT its grid intersection, so manual edits
+  // (add / move / remove / recolour) are reflected on the real photo too.
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
   for (const p of props.placed) {
+    const c = m[p.rank]?.[p.file]
+    if (!c) continue
+    const radius = cellSize(p.rank, p.file) * 0.42
     const info = PIECE_TYPE_BY_ID[p.classId]
-    const color = p.color === 'red' ? '#ef4444' : '#0ea5e9'
-    ctx.strokeStyle = color
-    ctx.lineWidth = line * 2
-    ctx.strokeRect(p.x1, p.y1, p.x2 - p.x1, p.y2 - p.y1)
+    const red = p.color === 'red'
 
-    const han = p.color === 'red' ? info.hanRed : info.hanBlack
-    const label = `${han} ${info.vi}`
-    const tw = ctx.measureText(label).width
-    ctx.fillStyle = color
-    ctx.fillRect(p.x1, p.y1 - font - 4, tw + 10, font + 4)
-    ctx.fillStyle = '#fff'
-    ctx.fillText(label, p.x1 + 5, p.y1 - font - 2)
+    ctx.beginPath()
+    ctx.arc(c.x, c.y, radius, 0, Math.PI * 2)
+    ctx.fillStyle = red ? 'rgba(254,226,226,0.92)' : 'rgba(241,245,249,0.92)'
+    ctx.fill()
+    ctx.lineWidth = radius * 0.14
+    ctx.strokeStyle = red ? '#dc2626' : '#1e293b'
+    ctx.stroke()
+
+    ctx.font = `bold ${radius * 1.2}px sans-serif`
+    ctx.fillStyle = red ? '#dc2626' : '#0f172a'
+    ctx.fillText(red ? info.hanRed : info.hanBlack, c.x, c.y + radius * 0.06)
   }
 }
 
