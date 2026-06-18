@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { FILE_LABELS, FILES, PIECE_TYPES, PIECE_TYPE_BY_ID, RANKS } from '../lib/constants'
 import type { PieceColor } from '../lib/constants'
 import { squareLabel } from '../lib/xiangqiFen'
+import { validateXiangqi, type ValidationResult } from '../lib/validateXiangqi'
 import type { Board, PlacedPiece } from '../lib/types'
 
 const props = defineProps<{ board: Board; fen: string }>()
@@ -103,6 +104,17 @@ async function copyFen() {
   copied.value = true
   setTimeout(() => (copied.value = false), 1500)
 }
+
+// --- FEN / position validation ---
+const validation = ref<ValidationResult | null>(null)
+function checkFen() {
+  validation.value = validateXiangqi(props.board)
+}
+// Reset the verdict whenever the board changes (edit/flip) so it isn't stale.
+watch(
+  () => props.board,
+  () => (validation.value = null),
+)
 </script>
 
 <template>
@@ -239,6 +251,27 @@ async function copyFen() {
         >
           {{ copied ? '✓ Đã copy' : 'Copy' }}
         </button>
+      </div>
+      <div class="mt-2">
+        <button
+          class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+          @click="checkFen"
+        >
+          ✓ Kiểm tra thế cờ
+        </button>
+        <div
+          v-if="validation"
+          class="mt-2 rounded-xl px-3 py-2 text-xs"
+          :class="validation.ok ? 'bg-emerald-900/30 text-emerald-300' : 'bg-rose-900/30 text-rose-200'"
+        >
+          <p v-if="validation.ok" class="font-semibold">✓ Thế cờ hợp lệ</p>
+          <template v-else>
+            <p class="mb-1 font-semibold">⚠ Có {{ validation.issues.length }} vấn đề:</p>
+            <ul class="list-disc space-y-0.5 pl-4">
+              <li v-for="(issue, i) in validation.issues" :key="i">{{ issue }}</li>
+            </ul>
+          </template>
+        </div>
       </div>
     </section>
 
