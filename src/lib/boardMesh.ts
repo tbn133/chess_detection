@@ -46,6 +46,26 @@ export function orientCorners(c: BoardCorners, orientation: Orientation): BoardC
   }
 }
 
+/**
+ * True if the four corners form a non-degenerate CONVEX quadrilateral in
+ * TL→TR→BR→BL order. Guards against twisted/bow-tie meshes from a bad estimate.
+ */
+export function isConvexQuad(c: BoardCorners): boolean {
+  const p = [c.topLeft, c.topRight, c.bottomRight, c.bottomLeft]
+  let sign = 0
+  for (let i = 0; i < 4; i++) {
+    const a = p[i]
+    const b = p[(i + 1) % 4]
+    const d = p[(i + 2) % 4]
+    const cross = (b.x - a.x) * (d.y - b.y) - (b.y - a.y) * (d.x - b.x)
+    if (Math.abs(cross) < 1e-6) return false
+    const s = Math.sign(cross)
+    if (sign === 0) sign = s
+    else if (s !== sign) return false
+  }
+  return true
+}
+
 /** Build a mesh from corners, honouring the chosen orientation. */
 export function meshFromCornersOriented(c: BoardCorners, orientation: Orientation): BoardMesh {
   return meshFromCorners(orientCorners(c, orientation))

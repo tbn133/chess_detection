@@ -1,7 +1,7 @@
 // Lazily load OpenCV.js (~9MB) from a CDN, only when board detection is needed.
 // Cached so it loads at most once per session.
 
-const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js'
+const OPENCV_URL = 'https://docs.opencv.org/4.9.0/opencv.js'
 
 let cvPromise: Promise<any> | null = null
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   guessOrientation,
+  isConvexQuad,
   mapDetectionsToMesh,
   meanSpacing,
   meshFromCorners,
@@ -63,6 +64,21 @@ describe('orientation', () => {
     const dx = Math.abs(m[0][FILES - 1].x - m[0][0].x)
     const dy = Math.abs(m[0][FILES - 1].y - m[0][0].y)
     expect(dy).toBeGreaterThan(dx)
+  })
+})
+
+describe('isConvexQuad', () => {
+  it('accepts a proper rectangle', () => {
+    expect(isConvexQuad(corners)).toBe(true)
+  })
+  it('rejects a twisted (bow-tie) quad', () => {
+    const twisted: BoardCorners = {
+      topLeft: { x: 0, y: 0 },
+      topRight: { x: 800, y: 0 },
+      bottomRight: { x: 0, y: 900 }, // swapped with bottomLeft -> self-intersecting
+      bottomLeft: { x: 800, y: 900 },
+    }
+    expect(isConvexQuad(twisted)).toBe(false)
   })
 })
 

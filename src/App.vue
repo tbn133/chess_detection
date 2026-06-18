@@ -10,6 +10,7 @@ import { type MappingResult } from './lib/boardMapping'
 import {
   estimateCornersFromPoints,
   guessOrientation,
+  isConvexQuad,
   mapDetectionsToMesh,
   meshFromCorners,
   meshFromCornersOriented,
@@ -148,13 +149,17 @@ async function autoFit() {
       corners = estimateCornersFromPoints(dets.map(pieceAnchor))
     }
 
-    if (corners) {
-      detectedCorners.value = corners
-      orientation.value = guessOrientation(corners)
-      mesh.value = meshFromCornersOriented(corners, orientation.value)
-      meshEdited.value = false
-      gridMode.value = 'corners'
+    // 3) Reject twisted/degenerate quads; use a clean default rectangle instead
+    //    so we never show a bow-tie grid.
+    if (!corners || !isConvexQuad(corners)) {
+      corners = defaultCorners(naturalWidth.value, naturalHeight.value)
     }
+
+    detectedCorners.value = corners
+    orientation.value = guessOrientation(corners)
+    mesh.value = meshFromCornersOriented(corners, orientation.value)
+    meshEdited.value = false
+    gridMode.value = 'corners'
   } catch (e) {
     analyzeError.value = e instanceof Error ? e.message : String(e)
   } finally {
