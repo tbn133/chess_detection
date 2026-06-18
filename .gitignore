@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+
+# NOTE: public/models/*.onnx is intentionally NOT ignored — it is tracked via
+# Git LFS (see .gitattributes) so the model can be versioned and deployed.
