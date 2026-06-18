@@ -17,9 +17,14 @@ function orderCorners(pts: Point[]): BoardCorners {
 }
 
 /**
- * Decode a YOLO-pose detection head for the single-class "board" model with 4
- * corner keypoints. Channel layout per anchor (Ultralytics pose, nms=False):
- *   [cx, cy, w, h, score, (kx,ky,kconf) × 4]  → 4 + 1 + 12 = 17 attributes.
+ * Decode a YOLO-pose head for the single-class "board" model with 4 corner
+ * keypoints. Handles two export layouts:
+ *
+ *   Raw      [1, 17, N]  — cx,cy,w,h, score, (kx,ky,kc)×4         (4+1+12)
+ *   End2end  [1, N, 18]  — x1,y1,x2,y2, score, cls, (kx,ky,kc)×4  (4+1+1+12)
+ *
+ * YOLO26 exports the NMS-free (end2end) form by default. The score lives at
+ * attribute index 4 in both; keypoints start at 5 (raw) or 6 (end2end).
  * Returns the highest-scoring board's 4 corners in ORIGINAL image pixels.
  */
 export function decodePose(
@@ -28,22 +33,22 @@ export function decodePose(
   lb: LetterboxInfo,
   scoreThreshold = 0.25,
 ): BoardCorners | null {
-  const NKPT = 4
-  const attrs = 4 + 1 + NKPT * 3 // 17
-
   const [, d1, d2] = dims
-  let numBoxes: number
-  let channelsFirst: boolean
-  if (d1 === attrs) {
-    channelsFirst = true
-    numBoxes = d2
-  } else if (d2 === attrs) {
-    channelsFirst = false
-    numBoxes = d1
+
+  let attrs: number
+  let kptOffset: number
+  if (d1 === 17 || d2 === 17) {
+    attrs = 17
+    kptOffset = 5
+  } else if (d1 === 18 || d2 === 18) {
+    attrs = 18
+    kptOffset = 6
   } else {
     return null // unexpected layout
   }
 
+  const channelsFirst = d1 === attrs
+  const numBoxes = channelsFirst ? d2 : d1
   const at = (attr: number, box: number) =>
     channelsFirst ? output[attr * numBoxes + box] : output[box * attrs + attr]
 
@@ -64,9 +69,9 @@ export function decodePose(
   })
 
   const pts: Point[] = []
-  for (let k = 0; k < NKPT; k++) {
-    const kx = at(5 + k * 3, bestBox)
-    const ky = at(6 + k * 3, bestBox)
+  for (let k = 0; k < 4; k++) {
+    const kx = at(kptOffset + k * 3, bestBox)
+    const ky = at(kptOffset + k * 3 + 1, bestBox)
     pts.push(toOriginal(kx, ky))
   }
   return orderCorners(pts)
