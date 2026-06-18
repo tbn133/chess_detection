@@ -28,6 +28,38 @@ function inPalace(f: number, r: number, top: boolean): boolean {
   return top ? r >= 0 && r <= 2 : r >= 7 && r <= 9
 }
 
+/** Apply a move, returning a new board (piece moves, capturing any occupant). */
+export function applyMove(board: Board, from: Square, to: Square): Board {
+  const next = board.map((row) => row.slice())
+  const p = next[from.rank][from.file]
+  next[from.rank][from.file] = null
+  if (p) next[to.rank][to.file] = { ...p, file: to.file, rank: to.rank }
+  return next
+}
+
+/** Is `color`'s general currently attacked (in check, incl. facing generals)? */
+export function isInCheck(board: Board, color: PieceColor): boolean {
+  const gen = board.flat().find((p) => p && p.color === color && p.type === 'vua') as
+    | PlacedPiece
+    | undefined
+  if (!gen) return false
+  for (const p of board.flat()) {
+    if (!p || p.color === color) continue
+    const ms = legalMoves(board, p.file, p.rank)
+    if (ms.some((m) => m.file === gen.file && m.rank === gen.rank)) return true
+  }
+  return false
+}
+
+/** Legal moves that do NOT leave the mover's own general in check. */
+export function legalMovesSafe(board: Board, file: number, rank: number): Square[] {
+  const p = get(board, file, rank)
+  if (!p) return []
+  return legalMoves(board, file, rank).filter(
+    (m) => !isInCheck(applyMove(board, { file, rank }, m), p.color),
+  )
+}
+
 /** Generate the pseudo-legal target squares for the piece at (file, rank). */
 export function legalMoves(board: Board, file: number, rank: number): Square[] {
   const piece = get(board, file, rank)

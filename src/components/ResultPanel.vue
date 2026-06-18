@@ -4,7 +4,13 @@ import { FILE_LABELS, FILES, PIECE_TYPES, PIECE_TYPE_BY_ID, RANKS } from '../lib
 import type { PieceColor } from '../lib/constants'
 import { squareLabel } from '../lib/xiangqiFen'
 import { validateXiangqi, type ValidationResult } from '../lib/validateXiangqi'
-import { legalMoves, type Square } from '../lib/xiangqiMoves'
+import {
+  applyMove,
+  isInCheck,
+  legalMoves,
+  legalMovesSafe,
+  type Square,
+} from '../lib/xiangqiMoves'
 import type { Board, PlacedPiece } from '../lib/types'
 
 const props = defineProps<{ board: Board; fen: string }>()
@@ -77,45 +83,116 @@ function pickErase() {
   tool.value = tool.value === 'erase' ? null : 'erase'
 }
 
-// --- View mode: tap a piece to see its legal moves ---
+// --- Selection + moves (view hint AND play) ---
 const selected = ref<{ file: number; rank: number } | null>(null)
+const playing = ref(false)
+const turn = ref<PieceColor>('red')
+const history = ref<Board[]>([])
+const startBoard = ref<Board | null>(null)
+
 const moves = computed<Square[]>(() => {
   const s = selected.value
   if (!s || !props.board[s.rank][s.file]) return []
+  if (playing.value) {
+    if (props.board[s.rank][s.file]!.color !== turn.value) return []
+    return legalMovesSafe(props.board, s.file, s.rank)
+  }
   return legalMoves(props.board, s.file, s.rank)
 })
 function isCapture(sq: Square) {
   return !!props.board[sq.rank][sq.file]
 }
-// Clear selection / verdict when the board or mode changes.
-watch([() => props.board, editing], () => {
-  selected.value = null
+const inCheck = computed(() => playing.value && isInCheck(props.board, turn.value))
+const checkedGeneral = computed(() => {
+  if (!inCheck.value) return null
+  return props.board.flat().find((p) => p && p.color === turn.value && p.type === 'vua') ?? null
 })
+
+function toggleEdit() {
+  editing.value = !editing.value
+  if (editing.value) playing.value = false
+  selected.value = null
+}
+function togglePlay() {
+  playing.value = !playing.value
+  if (playing.value) {
+    editing.value = false
+    startBoard.value = props.board.map((row) => row.slice())
+    history.value = []
+    turn.value = 'red'
+  }
+  selected.value = null
+}
+function switchTurn() {
+  turn.value = turn.value === 'red' ? 'black' : 'red'
+  selected.value = null
+}
+function undo() {
+  const prev = history.value.pop()
+  if (!prev) return
+  emit('update', prev)
+  turn.value = turn.value === 'red' ? 'black' : 'red'
+  selected.value = null
+}
+function resetPlay() {
+  if (!startBoard.value) return
+  emit('update', startBoard.value.map((row) => row.slice()))
+  history.value = []
+  turn.value = 'red'
+  selected.value = null
+}
+
+// Clear selection when switching mode. (Board changes during play are driven by
+// our own emit, which also clears selection explicitly.)
+watch(editing, () => (selected.value = null))
+watch(
+  () => props.board,
+  () => (validation.value = null),
+)
+
+function placePiece(next: Board, r: number, f: number) {
+  if (tool.value === 'erase' || !tool.value) {
+    next[r][f] = null
+    return
+  }
+  const { classId, color } = tool.value
+  next[r][f] = {
+    classId,
+    type: PIECE_TYPE_BY_ID[classId].type,
+    color,
+    file: f,
+    rank: r,
+    score: 1,
+    x1: 0,
+    y1: 0,
+    x2: 0,
+    y2: 0,
+  }
+}
 
 function onIntersection(r: number, f: number) {
   if (editing.value) {
     if (!tool.value) return
     const next = props.board.map((row) => row.slice())
-    if (tool.value === 'erase') {
-      next[r][f] = null
-    } else {
-      const { classId, color } = tool.value
-      next[r][f] = {
-        classId,
-        type: PIECE_TYPE_BY_ID[classId].type,
-        color,
-        file: f,
-        rank: r,
-        score: 1,
-        x1: 0,
-        y1: 0,
-        x2: 0,
-        y2: 0,
-      }
-    }
+    placePiece(next, r, f)
     emit('update', next)
     return
   }
+
+  if (playing.value) {
+    const target = moves.value.find((m) => m.file === f && m.rank === r)
+    if (selected.value && target) {
+      history.value.push(props.board.map((row) => row.slice()))
+      emit('update', applyMove(props.board, selected.value, { file: f, rank: r }))
+      selected.value = null
+      turn.value = turn.value === 'red' ? 'black' : 'red'
+      return
+    }
+    const cell = props.board[r][f]
+    selected.value = cell && cell.color === turn.value ? { file: f, rank: r } : null
+    return
+  }
+
   // View mode: toggle the piece whose moves we show.
   const isSame = selected.value && selected.value.file === f && selected.value.rank === r
   selected.value = !isSame && props.board[r][f] ? { file: f, rank: r } : null
@@ -145,11 +222,18 @@ watch(
     <section>
       <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-300">Sơ đồ nhận diện</h3>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <button
+            class="rounded-lg px-3 py-1 text-xs font-medium"
+            :class="playing ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'"
+            @click="togglePlay"
+          >
+            {{ playing ? '♟ Đang đánh' : '♟ Đánh cờ' }}
+          </button>
           <button
             class="rounded-lg px-3 py-1 text-xs font-medium"
             :class="editing ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-100 hover:bg-slate-600'"
-            @click="editing = !editing"
+            @click="toggleEdit"
           >
             {{ editing ? '✓ Đang sửa' : '✎ Sửa tay' }}
           </button>
@@ -160,6 +244,31 @@ watch(
             ↻ Đổi bên
           </button>
         </div>
+      </div>
+
+      <!-- play control bar -->
+      <div v-if="playing" class="mb-2 flex flex-wrap items-center gap-2 text-xs">
+        <button
+          class="rounded-lg px-3 py-1 font-semibold"
+          :class="turn === 'red' ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-900'"
+          @click="switchTurn"
+        >
+          {{ turn === 'red' ? 'Đỏ đi' : 'Đen đi' }} ⇄
+        </button>
+        <span v-if="inCheck" class="rounded-lg bg-rose-600 px-2 py-1 font-bold text-white">Chiếu Tướng!</span>
+        <button
+          class="rounded-lg bg-slate-700 px-3 py-1 font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-40"
+          :disabled="!history.length"
+          @click="undo"
+        >
+          ↩ Hoàn tác
+        </button>
+        <button
+          class="rounded-lg bg-slate-700 px-3 py-1 font-medium text-slate-100 hover:bg-slate-600"
+          @click="resetPlay"
+        >
+          ⟲ Thế cờ đầu
+        </button>
       </div>
 
       <div class="overflow-x-auto rounded-2xl bg-amber-100 p-2">
@@ -206,7 +315,18 @@ watch(
               {{ han(p) }}
             </text>
           </g>
-          <!-- legal-move hints (view mode) -->
+          <!-- general in check (play mode) -->
+          <circle
+            v-if="checkedGeneral"
+            :cx="X(checkedGeneral.file)"
+            :cy="Y(checkedGeneral.rank)"
+            r="0.5"
+            fill="none"
+            stroke="#f43f5e"
+            stroke-width="0.1"
+            class="pointer-events-none"
+          />
+          <!-- legal-move hints (view + play) -->
           <template v-if="!editing && selected">
             <circle
               :cx="X(selected.file)"
@@ -247,7 +367,10 @@ watch(
         </svg>
       </div>
 
-      <p v-if="!editing" class="mt-1 text-[11px] text-slate-500">
+      <p v-if="playing" class="mt-1 text-[11px] text-slate-500">
+        Bấm quân đúng lượt rồi bấm ô xanh để đi. Nước tự chiếu Tướng bị loại.
+      </p>
+      <p v-else-if="!editing" class="mt-1 text-[11px] text-slate-500">
         Bấm vào một quân để xem nước đi hợp lệ (chấm xanh = đi, vòng xanh = ăn).
       </p>
 

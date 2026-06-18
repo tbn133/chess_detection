@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { legalMoves } from './xiangqiMoves'
+import { applyMove, isInCheck, legalMoves, legalMovesSafe } from './xiangqiMoves'
 import { FILES, PIECE_TYPE_BY_ID, RANKS } from './constants'
 import type { Board, PieceColor, PlacedPiece } from './types'
 
@@ -75,5 +75,27 @@ describe('legalMoves', () => {
     put(b, 4, 9, ID.vua, 'red')
     put(b, 4, 0, ID.vua, 'black')
     expect(has(legalMoves(b, 4, 9), 4, 0)).toBe(true)
+  })
+
+  it('detects check and applies a move', () => {
+    const b = emptyBoard()
+    put(b, 4, 9, ID.vua, 'red')
+    put(b, 4, 0, ID.vua, 'black')
+    put(b, 4, 5, ID.xe, 'black') // black chariot on red general's file
+    expect(isInCheck(b, 'red')).toBe(true)
+    const after = applyMove(b, { file: 4, rank: 5 }, { file: 4, rank: 4 })
+    expect(after[4][4]?.type).toBe('xe')
+    expect(after[5][4]).toBeNull()
+  })
+
+  it('legalMovesSafe filters moves that leave own general in check', () => {
+    const b = emptyBoard()
+    put(b, 4, 9, ID.vua, 'red')
+    put(b, 4, 0, ID.vua, 'black')
+    put(b, 4, 5, ID.xe, 'red') // pinned: shields red general from black general
+    const safe = legalMovesSafe(b, 4, 5)
+    // Moving the chariot off the file would expose the generals -> illegal.
+    expect(safe.some((m) => m.file !== 4)).toBe(false)
+    expect(safe.every((m) => m.file === 4)).toBe(true)
   })
 })
