@@ -88,29 +88,26 @@ export function mapDetectionsToMesh(
   const dropped: ColoredDetection[] = []
   const tol = meanSpacing(mesh) * toleranceFactor
 
-  for (const det of detections) {
+  // Assign highest-confidence detections first. If a detection's nearest
+  // intersection is already taken (two pieces snapping to one node when the
+  // grid is slightly off), fall back to the nearest FREE intersection within
+  // tolerance instead of dropping the piece.
+  const ordered = [...detections].sort((a, b) => b.score - a.score)
+  for (const det of ordered) {
     const p = pieceAnchor(det)
-    let bestR = -1
-    let bestF = -1
-    let bestD = Infinity
+    const candidates: { r: number; f: number; d: number }[] = []
     for (let r = 0; r < RANKS; r++) {
       for (let f = 0; f < FILES; f++) {
-        const d = dist(p, mesh[r][f])
-        if (d < bestD) {
-          bestD = d
-          bestR = r
-          bestF = f
-        }
+        candidates.push({ r, f, d: dist(p, mesh[r][f]) })
       }
     }
-    if (bestR < 0 || (tol > 0 && bestD > tol)) {
+    candidates.sort((a, b) => a.d - b.d)
+    const slot = candidates.find((c) => !board[c.r][c.f] && (tol <= 0 || c.d <= tol))
+    if (!slot) {
       dropped.push(det)
       continue
     }
-    const existing = board[bestR][bestF]
-    if (!existing || det.score > existing.score) {
-      board[bestR][bestF] = { ...det, file: bestF, rank: bestR }
-    }
+    board[slot.r][slot.f] = { ...det, file: slot.f, rank: slot.r }
   }
 
   const placed: PlacedPiece[] = []
