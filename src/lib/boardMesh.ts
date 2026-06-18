@@ -120,12 +120,18 @@ export function mapDetectionsToMesh(
 ): MappingResult {
   const board = emptyBoard()
   const dropped: ColoredDetection[] = []
-  const tol = meanSpacing(mesh) * toleranceFactor
+  const spacing = meanSpacing(mesh)
+  // Two thresholds: `onBoardTol` decides whether a detection belongs to the
+  // board at all (filters hands/clutter); `bumpTol` is how far a piece may be
+  // relocated when its nearest intersection is already taken (must reach an
+  // adjacent cell ~1 spacing away, so it's larger).
+  const onBoardTol = spacing * toleranceFactor
+  const bumpTol = spacing * 1.6
 
   // Assign highest-confidence detections first. If a detection's nearest
-  // intersection is already taken (two pieces snapping to one node when the
-  // grid is slightly off), fall back to the nearest FREE intersection within
-  // tolerance instead of dropping the piece.
+  // intersection is taken (two pieces snapping to one node when the grid is
+  // slightly off), relocate it to the nearest FREE intersection rather than
+  // dropping the piece.
   const ordered = [...detections].sort((a, b) => b.score - a.score)
   for (const det of ordered) {
     const p = pieceAnchor(det)
@@ -136,7 +142,13 @@ export function mapDetectionsToMesh(
       }
     }
     candidates.sort((a, b) => a.d - b.d)
-    const slot = candidates.find((c) => !board[c.r][c.f] && (tol <= 0 || c.d <= tol))
+
+    // Off the board entirely -> drop.
+    if (spacing > 0 && candidates[0].d > onBoardTol) {
+      dropped.push(det)
+      continue
+    }
+    const slot = candidates.find((c) => !board[c.r][c.f] && (spacing <= 0 || c.d <= bumpTol))
     if (!slot) {
       dropped.push(det)
       continue

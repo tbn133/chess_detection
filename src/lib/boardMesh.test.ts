@@ -75,14 +75,16 @@ describe('mapDetectionsToMesh', () => {
     expect(board[9][4]?.classId).toBe(4)
   })
 
-  it('keeps the higher-scoring piece on a contested intersection', () => {
+  it('gives the contested intersection to the higher score and relocates the other', () => {
     const m = meshFromCorners(corners)
     const { placed, board } = mapDetectionsToMesh(
       [det(0, 0, 0, 'black', 0.3), det(10, 10, 6, 'red', 0.95)],
       m,
     )
-    expect(placed).toHaveLength(1)
+    // Higher score keeps the nearest node; lower score is bumped to a free
+    // neighbour instead of being dropped.
     expect(board[0][0]?.classId).toBe(6)
+    expect(placed).toHaveLength(2)
   })
 
   it('drops a detection far from any intersection', () => {
