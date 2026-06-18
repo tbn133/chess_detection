@@ -16,6 +16,7 @@ import {
   type Orientation,
 } from './lib/boardMesh'
 import { pieceAnchor } from './lib/boardMapping'
+import { detectBoardCorners } from './lib/detectBoard'
 import { boardToFen, flipBoard } from './lib/xiangqiFen'
 import type { Board, BoardCorners, BoardMesh, Detection, PlacedPiece, Point } from './lib/types'
 
@@ -122,15 +123,31 @@ async function ensureDetections(): Promise<Detection[]> {
   return dets
 }
 
-/** Run detection (once) and fit the grid to the detected pieces. */
+/**
+ * Auto-fit the grid. Preferred: detect the board's polygon from the photo
+ * (OpenCV.js). Fallback: estimate corners from the detected piece cloud. The
+ * original image is never modified — we only read its pixels to compute the
+ * board quad and overlay the grid.
+ */
 async function autoFit() {
   if (!image.value) return
   autoFitting.value = true
   analyzeError.value = null
   try {
-    if (!(await ensureModel())) return // missing/error -> banner handles it
-    const dets = await ensureDetections()
-    const corners = estimateCornersFromPoints(dets.map(pieceAnchor))
+    // 1) Try to detect the actual board polygon from the image.
+    let corners: BoardCorners | null = null
+    try {
+      corners = await detectBoardCorners(image.value)
+    } catch {
+      corners = null // OpenCV failed/blocked -> fall through to piece estimate
+    }
+
+    // 2) Fallback: estimate from detected pieces (needs the model).
+    if (!corners && (await ensureModel())) {
+      const dets = await ensureDetections()
+      corners = estimateCornersFromPoints(dets.map(pieceAnchor))
+    }
+
     if (corners) {
       detectedCorners.value = corners
       orientation.value = guessOrientation(corners)
