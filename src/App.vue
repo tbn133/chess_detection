@@ -21,7 +21,7 @@ import {
 import { pieceAnchor } from './lib/boardMapping'
 import { detectBoardCorners } from './lib/detectBoard'
 import { boardToFen, flipBoard } from './lib/xiangqiFen'
-import type { Board, BoardCorners, BoardMesh, Detection, PlacedPiece, Point } from './lib/types'
+import type { Board, BoardCorners, BoardMesh, Detection, Point } from './lib/types'
 
 const { status, error: modelError, backend, load, detect } = useYolo()
 const { detectCorners: detectBoardPose } = useBoardPose()
@@ -47,11 +47,6 @@ const result = ref<MappingResult | null>(null)
 const editBoard = ref<Board | null>(null)
 
 const displayBoard = computed<Board | null>(() => editBoard.value)
-const displayPlaced = computed<PlacedPiece[]>(() => {
-  const b = displayBoard.value
-  if (!b) return []
-  return b.flat().filter((p): p is PlacedPiece => p !== null)
-})
 const fen = computed(() => (displayBoard.value ? boardToFen(displayBoard.value) : ''))
 
 function flipResult() {
@@ -389,12 +384,11 @@ python export.py   # tạo & copy ONNX sang frontend/public/models/</pre>
             @update:model-value="onMeshEdit"
           />
           <DetectionCanvas
-            v-else-if="result && image && mesh"
-            :image="image"
+            v-else-if="result && imageUrl && mesh"
+            :image-url="imageUrl"
             :natural-width="naturalWidth"
             :natural-height="naturalHeight"
             :mesh="mesh"
-            :placed="displayPlaced"
           />
 
           <p v-if="!result" class="text-xs text-slate-500">
